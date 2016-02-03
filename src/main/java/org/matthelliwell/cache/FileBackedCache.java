@@ -19,11 +19,16 @@ import java.util.function.BiConsumer;
 import com.google.common.collect.ImmutableSet;
 import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
+
+/**
+ * This is an implementation of a map that uses a LRU maps to store objects in memory and then a set of serialised
+ * files that are used to store the objects when the LRU cache is full
+ */
 public class FileBackedCache<K, V extends Serializable> implements Map<K, V> {
     private static final int DEFAULT_MEMORY_CACHE_CAPACITY = Integer.MAX_VALUE;
 
     private int memoryCacheCapacity;
-    private BiConsumer<K, V> deserialisedCallback;
+    private Optional<BiConsumer<K, V>> deserialisedCallback = Optional.empty();
     private Map<K, Path> fileCache = new HashMap<>();
     private Optional<Path> tempDir = Optional.empty();
     private LinkedHashMap<K, V> memoryCache = new LinkedHashMap<K, V>() {
@@ -38,6 +43,10 @@ public class FileBackedCache<K, V extends Serializable> implements Map<K, V> {
         }
     };
 
+    /**
+     * This will in effect never serialise anything to cache and will store everything in memory. It is useful for
+     * tuning to see how many items you can store in memory
+     */
     public FileBackedCache() {
         this(DEFAULT_MEMORY_CACHE_CAPACITY, null);
     }
@@ -52,7 +61,7 @@ public class FileBackedCache<K, V extends Serializable> implements Map<K, V> {
 
     public FileBackedCache(final int memoryCacheCapacity, final BiConsumer<K, V> deserialisedCallback) {
         this.memoryCacheCapacity = memoryCacheCapacity;
-        this.deserialisedCallback = deserialisedCallback;
+        this.deserialisedCallback = Optional.of(deserialisedCallback);
     }
 
 
@@ -71,7 +80,10 @@ public class FileBackedCache<K, V extends Serializable> implements Map<K, V> {
         return memoryCache.containsKey(key) || fileCache.containsKey(key);
     }
 
-    /** We'd have to load each file and check for the value to implement this so won't implement until I need it */
+    /**
+     * We'd have to load each file and check for the value to implement this. If we could do this, we wouldn't need
+     * this class
+     */
     @Override
     public boolean containsValue(final Object value) {
         throw new NotImplementedException();
@@ -79,24 +91,22 @@ public class FileBackedCache<K, V extends Serializable> implements Map<K, V> {
 
     @Override
     public V get(final Object key) {
-        V cachedObject = memoryCache.get(key);
-        if (cachedObject == null) {
+        final V memoryCachedObject = memoryCache.get(key);
+        if (memoryCachedObject == null) {
             // Check the file cache
             final Path path = fileCache.get(key);
             if (path != null) {
-                cachedObject = readEntryFile(path);
+                final V fileCachedObject = readEntryFile(path);
 
                 // We've read it from file so add it to the memory cache, possibly knocking out something else
-                memoryCache.put((K)key, cachedObject);
+                memoryCache.put((K)key, fileCachedObject);
                 removeFromFileCache(key);
 
-                if ( deserialisedCallback != null ) {
-                    deserialisedCallback.accept((K) key, cachedObject);
-                }
+                deserialisedCallback.ifPresent(cb -> cb.accept((K)key, fileCachedObject));
             }
         }
 
-        return cachedObject;
+        return memoryCachedObject;
     }
 
     @Override
@@ -148,13 +158,19 @@ public class FileBackedCache<K, V extends Serializable> implements Map<K, V> {
                 .build();
     }
 
-    /** We'd have to load each file and check for the value to implement this so won't implement until I need it */
+    /**
+     * We'd have to load each file and check for the value to implement this. If we could do this, we wouldn't need
+     * this class
+     */
     @Override
     public Collection<V> values() {
         throw new NotImplementedException();
     }
 
-    /** We'd have to load each file and check for the value to implement this so won't implement until I need it */
+    /**
+     * We'd have to load each file and check for the value to implement this. If we could do this, we wouldn't need
+     * this class
+     */
     @Override
     public Set<Entry<K, V>> entrySet() {
         throw new NotImplementedException();
