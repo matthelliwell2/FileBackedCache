@@ -61,7 +61,8 @@ public class FileBackedCache<K, V extends Serializable> implements Map<K, V> {
 
     public FileBackedCache(final int memoryCacheCapacity, final BiConsumer<K, V> deserialisedCallback) {
         this.memoryCacheCapacity = memoryCacheCapacity;
-        this.deserialisedCallback = Optional.of(deserialisedCallback);
+
+        this.deserialisedCallback = Optional.ofNullable(deserialisedCallback);
     }
 
 
@@ -103,6 +104,8 @@ public class FileBackedCache<K, V extends Serializable> implements Map<K, V> {
                 removeFromFileCache(key);
 
                 deserialisedCallback.ifPresent(cb -> cb.accept((K)key, fileCachedObject));
+
+                return fileCachedObject;
             }
         }
 
@@ -194,7 +197,7 @@ public class FileBackedCache<K, V extends Serializable> implements Map<K, V> {
     private void createTempDirIfDoesntExist() {
         try {
             if (!tempDir.isPresent()) {
-                tempDir = Optional.of(Files.createTempDirectory("minecraft-region"));
+                tempDir = Optional.of(Files.createTempDirectory("filebackedcache"));
             }
         } catch (final IOException e) {
             throw new RuntimeException(e);
@@ -207,7 +210,6 @@ public class FileBackedCache<K, V extends Serializable> implements Map<K, V> {
             try (final OutputStream os = Files.newOutputStream(entryPath)) {
                 final ObjectOutputStream oos = new ObjectOutputStream(os);
                 oos.writeObject(entry.getValue());
-                System.out.println("Serialised " + entryPath);
             }
 
             return entryPath;
@@ -220,9 +222,9 @@ public class FileBackedCache<K, V extends Serializable> implements Map<K, V> {
     private V readEntryFile(final Path path) {
         try {
             try (final InputStream is = Files.newInputStream(path)) {
-                System.out.println("Deserialised " + path);
                 final ObjectInputStream ois = new ObjectInputStream(is);
-                return (V) ois.readObject();
+
+                return (V)ois.readObject();
             }
         } catch (IOException | ClassNotFoundException e) {
             throw new RuntimeException(e);
